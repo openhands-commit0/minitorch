@@ -52,6 +52,14 @@ class Scalar:
     def __repr__(self) -> str:
         return 'Scalar(%f)' % self.data
 
+    def __hash__(self) -> int:
+        return hash(self.unique_id)
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, Scalar):
+            return False
+        return self.unique_id == other.unique_id
+
     def __mul__(self, b: ScalarLike) -> Scalar:
         return Mul.apply(self, b)
 
