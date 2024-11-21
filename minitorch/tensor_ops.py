@@ -218,6 +218,41 @@ class SimpleOps(TensorOps):
             )
             return out
         return _reduce
+
+    @staticmethod
+    def matrix_multiply(a: Tensor, b: Tensor) -> Tensor:
+        """
+        Batched matrix multiplication of two tensors.
+
+        Args:
+            a : batch1 x n x m tensor
+            b : batch2 x m x p tensor
+
+        Returns:
+            A tensor of size batch1 x batch2 x n x p
+        """
+        # Extract dimensions
+        batch1, n, m = a.shape
+        batch2, m2, p = b.shape
+        assert m == m2, f"Incompatible dimensions: {m} != {m2}"
+
+        # Create output tensor
+        out = a.zeros((batch1, batch2, n, p))
+
+        # Perform matrix multiplication
+        for i in range(batch1):
+            for j in range(batch2):
+                for k in range(n):
+                    for l in range(p):
+                        sum_val = 0.0
+                        for t in range(m):
+                            sum_val += a._tensor._storage[a._tensor._strides[0] * i + a._tensor._strides[1] * k + a._tensor._strides[2] * t] * \
+                                     b._tensor._storage[b._tensor._strides[0] * j + b._tensor._strides[1] * t + b._tensor._strides[2] * l]
+                        out_idx = out._tensor._strides[0] * i + out._tensor._strides[1] * j + out._tensor._strides[2] * k + out._tensor._strides[3] * l
+                        out._tensor._storage[out_idx] = sum_val
+
+        return out
+
     is_cuda = False
 
 def tensor_map(fn: Callable[[float], float]) -> Callable[[Storage, Shape, Strides, Storage, Shape, Strides], None]:
