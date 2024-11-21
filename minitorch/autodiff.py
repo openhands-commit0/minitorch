@@ -104,3 +104,23 @@ class Context:
         """Store the given `values` if they need to be used during backpropagation."""
         if not self.no_grad:
             self.saved_values = values
+
+def grad_check(f: Any, *vals: Any, arg: int=0, epsilon: float=1e-06, rtol: float=0.001, atol: float=1e-08) -> bool:
+    """
+    Check that the computed gradient matches the numerical approximation.
+
+    Args:
+        f : arbitrary function from n-scalars to 1-scalar
+        *vals : n-float values $x_0 \ldots x_{n-1}$
+        arg : the argument to compute the gradient with respect to
+        epsilon : a small constant
+        rtol : relative tolerance
+        atol : absolute tolerance
+
+    Returns:
+        bool : whether the numerical and computed gradient are close
+    """
+    numerical = central_difference(f, *vals, arg=arg, epsilon=epsilon)
+    computed = f(*vals)
+    backpropagate(computed, 1.0)
+    return abs(numerical - vals[arg].derivative) <= (atol + rtol * abs(numerical))
