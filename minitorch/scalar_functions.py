@@ -9,11 +9,15 @@ if TYPE_CHECKING:
 
 def wrap_tuple(x):
     """Turn a possible value into a tuple"""
-    pass
+    if isinstance(x, tuple):
+        return x
+    return (x,)
 
 def unwrap_tuple(x):
     """Turn a singleton tuple into a value"""
-    pass
+    if len(x) == 1:
+        return x[0]
+    return x
 
 class ScalarFunction:
     """
@@ -23,33 +27,163 @@ class ScalarFunction:
     This is a static class and is never instantiated. We use `class`
     here to group together the `forward` and `backward` code.
     """
+    @classmethod
+    def chain_rule(cls, ctx: Context, inputs: Tuple[Scalar, ...], d_output: float) -> Tuple[float, ...]:
+        """
+        Implements the chain rule for a function.
+
+        Args:
+            ctx: Context from running forward
+            inputs: Inputs to the function
+            d_output: Derivative of the output
+
+        Returns:
+            List of derivatives of the input
+        """
+        d_inputs = cls.backward(ctx, d_output)
+        return wrap_tuple(d_inputs)
+
+    @classmethod
+    def apply(cls, *vals: ScalarLike) -> Scalar:
+        """
+        Apply function forward to the arguments.
+
+        Args:
+            vals: Values for the function
+
+        Returns:
+            A new Variable with fn as operation.
+        """
+        raw_vals = []
+        scalars = []
+        for v in vals:
+            if isinstance(v, minitorch.scalar.Scalar):
+                scalars.append(v)
+                raw_vals.append(v.data)
+            else:
+                scalars.append(minitorch.scalar.Scalar(v))
+                raw_vals.append(v)
+
+        # Create the context.
+        ctx = Context()
+
+        # Call forward with the variables.
+        c = cls.forward(ctx, *raw_vals)
+        assert isinstance(c, float), "Expected return type float got %s" % (type(c))
+
+        # Create a new variable from the result with a new history.
+        back = minitorch.scalar.ScalarHistory(cls, ctx, scalars)
+        return minitorch.scalar.Scalar(c, back)
 
 class Add(ScalarFunction):
     """Addition function $f(x, y) = x + y$"""
+    @staticmethod
+    def forward(ctx: Context, a: float, b: float) -> float:
+        return a + b
+
+    @staticmethod
+    def backward(ctx: Context, d_output: float) -> Tuple[float, float]:
+        return d_output, d_output
 
 class Log(ScalarFunction):
     """Log function $f(x) = log(x)$"""
+    @staticmethod
+    def forward(ctx: Context, a: float) -> float:
+        ctx.save_for_backward(a)
+        return operators.log(a)
+
+    @staticmethod
+    def backward(ctx: Context, d_output: float) -> float:
+        (a,) = ctx.saved_values
+        return operators.log_back(a, d_output)
 
 class Mul(ScalarFunction):
     """Multiplication function"""
+    @staticmethod
+    def forward(ctx: Context, a: float, b: float) -> float:
+        ctx.save_for_backward(a, b)
+        return operators.mul(a, b)
+
+    @staticmethod
+    def backward(ctx: Context, d_output: float) -> Tuple[float, float]:
+        a, b = ctx.saved_values
+        return b * d_output, a * d_output
 
 class Inv(ScalarFunction):
     """Inverse function"""
+    @staticmethod
+    def forward(ctx: Context, a: float) -> float:
+        ctx.save_for_backward(a)
+        return operators.inv(a)
+
+    @staticmethod
+    def backward(ctx: Context, d_output: float) -> float:
+        (a,) = ctx.saved_values
+        return operators.inv_back(a, d_output)
 
 class Neg(ScalarFunction):
     """Negation function"""
+    @staticmethod
+    def forward(ctx: Context, a: float) -> float:
+        return operators.neg(a)
+
+    @staticmethod
+    def backward(ctx: Context, d_output: float) -> float:
+        return -d_output
 
 class Sigmoid(ScalarFunction):
     """Sigmoid function"""
+    @staticmethod
+    def forward(ctx: Context, a: float) -> float:
+        ctx.save_for_backward(a)
+        return operators.sigmoid(a)
+
+    @staticmethod
+    def backward(ctx: Context, d_output: float) -> float:
+        (a,) = ctx.saved_values
+        sig_a = operators.sigmoid(a)
+        return d_output * sig_a * (1 - sig_a)
 
 class ReLU(ScalarFunction):
     """ReLU function"""
+    @staticmethod
+    def forward(ctx: Context, a: float) -> float:
+        ctx.save_for_backward(a)
+        return operators.relu(a)
+
+    @staticmethod
+    def backward(ctx: Context, d_output: float) -> float:
+        (a,) = ctx.saved_values
+        return operators.relu_back(a, d_output)
 
 class Exp(ScalarFunction):
     """Exp function"""
+    @staticmethod
+    def forward(ctx: Context, a: float) -> float:
+        ctx.save_for_backward(a)
+        return operators.exp(a)
+
+    @staticmethod
+    def backward(ctx: Context, d_output: float) -> float:
+        (a,) = ctx.saved_values
+        return d_output * operators.exp(a)
 
 class LT(ScalarFunction):
     """Less-than function $f(x) =$ 1.0 if x is less than y else 0.0"""
+    @staticmethod
+    def forward(ctx: Context, a: float, b: float) -> float:
+        return operators.lt(a, b)
+
+    @staticmethod
+    def backward(ctx: Context, d_output: float) -> Tuple[float, float]:
+        return 0.0, 0.0
 
 class EQ(ScalarFunction):
     """Equal function $f(x) =$ 1.0 if x is equal to y else 0.0"""
+    @staticmethod
+    def forward(ctx: Context, a: float, b: float) -> float:
+        return operators.eq(a, b)
+
+    @staticmethod
+    def backward(ctx: Context, d_output: float) -> Tuple[float, float]:
+        return 0.0, 0.0
