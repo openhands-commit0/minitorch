@@ -19,7 +19,35 @@ def wrap_tuple(x):
     pass
 
 class Function:
-    pass
+    """
+    Base class for function implementations.
+    """
+    @classmethod
+    def apply(cls, *vals: Tensor) -> Tensor:
+        """
+        Apply function forward to the arguments.
+
+        Args:
+            vals: input tensors
+
+        Returns:
+            output tensor
+        """
+        raw_vals = []
+        need_grad = False
+        for v in vals:
+            if v.requires_grad:
+                need_grad = True
+            raw_vals.append(v)
+
+        # Create the context.
+        ctx = Context(not need_grad)
+
+        # Call forward with the variables.
+        c = cls()
+        ret = c.forward(ctx, *raw_vals)
+
+        return ret
 
 class Neg(Function):
     pass
