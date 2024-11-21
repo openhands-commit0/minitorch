@@ -78,19 +78,26 @@ def backpropagate(variable: Variable, deriv: Any) -> None:
 
     No return. Should write to its results to the derivative values of each leaf through `accumulate_derivative`.
     """
-    queue = [(variable, deriv)]
-    derivatives = {}
+    # Get variables in topological order
+    ordered = topological_sort(variable)
 
-    while queue:
-        var, d = queue.pop(0)
+    # Store derivatives for each variable
+    derivatives = {variable: deriv}
+
+    # Go through the variables in reverse order
+    for var in ordered:
         if var.is_leaf():
-            var.accumulate_derivative(d)
+            var.accumulate_derivative(derivatives[var])
         else:
-            for parent in var.parents():
+            # Get the derivative for this variable
+            d = derivatives[var]
+            # Get the parents and their derivatives through the chain rule
+            for parent, parent_deriv in var.chain_rule(d):
+                # Initialize derivative for parent if not seen before
                 if parent not in derivatives:
                     derivatives[parent] = 0.0
-                derivatives[parent] += d
-                queue.append((parent, derivatives[parent]))
+                # Add to parent's derivative
+                derivatives[parent] += parent_deriv
 
 @dataclass
 class Context:
