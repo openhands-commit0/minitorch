@@ -17,11 +17,31 @@ def central_difference(f: Any, *vals: Any, arg: int=0, epsilon: float=1e-06) -> 
     Returns:
         An approximation of $f'_i(x_0, \\ldots, x_{n-1})$
     """
-    pass
+    vals_plus = list(vals)
+    vals_minus = list(vals)
+    vals_plus[arg] = vals[arg] + epsilon
+    vals_minus[arg] = vals[arg] - epsilon
+    return (f(*vals_plus) - f(*vals_minus)) / (2.0 * epsilon)
 variable_count = 1
 
 class Variable(Protocol):
-    pass
+    """A variable in a computation graph."""
+
+    def accumulate_derivative(self, x: Any) -> None:
+        """Add `x` to the derivative accumulated on this variable."""
+        pass
+
+    def is_constant(self) -> bool:
+        """Is this a constant variable?"""
+        pass
+
+    def is_leaf(self) -> bool:
+        """Is this a leaf variable?"""
+        pass
+
+    def parents(self) -> Iterable["Variable"]:
+        """Get the parents of this variable."""
+        pass
 
 def topological_sort(variable: Variable) -> Iterable[Variable]:
     """
@@ -33,7 +53,19 @@ def topological_sort(variable: Variable) -> Iterable[Variable]:
     Returns:
         Non-constant Variables in topological order starting from the right.
     """
-    pass
+    visited = set()
+    order = []
+
+    def visit(var: Variable) -> None:
+        if var in visited or var.is_constant():
+            return
+        visited.add(var)
+        for parent in var.parents():
+            visit(parent)
+        order.insert(0, var)
+
+    visit(variable)
+    return order
 
 def backpropagate(variable: Variable, deriv: Any) -> None:
     """
@@ -46,7 +78,19 @@ def backpropagate(variable: Variable, deriv: Any) -> None:
 
     No return. Should write to its results to the derivative values of each leaf through `accumulate_derivative`.
     """
-    pass
+    queue = [(variable, deriv)]
+    derivatives = {}
+
+    while queue:
+        var, d = queue.pop(0)
+        if var.is_leaf():
+            var.accumulate_derivative(d)
+        else:
+            for parent in var.parents():
+                if parent not in derivatives:
+                    derivatives[parent] = 0.0
+                derivatives[parent] += d
+                queue.append((parent, derivatives[parent]))
 
 @dataclass
 class Context:
@@ -58,4 +102,5 @@ class Context:
 
     def save_for_backward(self, *values: Any) -> None:
         """Store the given `values` if they need to be used during backpropagation."""
-        pass
+        if not self.no_grad:
+            self.saved_values = values
