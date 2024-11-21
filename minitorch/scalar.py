@@ -104,7 +104,7 @@ class Scalar:
         """True if this variable created by the user (no `last_fn`)"""
         return self.history.last_fn is None
 
-    def chain_rule(self, d_output: float) -> Tuple[float, ...]:
+    def chain_rule(self, d_output: float) -> Tuple[Tuple[Variable, float], ...]:
         """
         Implement the derivative chain-rule.
 
@@ -112,12 +112,19 @@ class Scalar:
             d_output (float): derivative of the output
 
         Returns:
-            List of numbers, where each is the derivative of the output with respect to
+            List of tuples of (variable, derivative), where each is the derivative of the output with respect to
             one of the inputs.
         """
         if self.history.last_fn is None:
             return ()
-        return self.history.last_fn.chain_rule(self.history.ctx, self.history.inputs, d_output)
+        derivatives = self.history.last_fn.chain_rule(self.history.ctx, self.history.inputs, d_output)
+        return tuple((var, deriv) for var, deriv in zip(self.history.inputs, derivatives))
+
+    def parents(self) -> Iterable[Variable]:
+        """Get the parents of this variable."""
+        if self.history.last_fn is None:
+            return []
+        return self.history.inputs
 
     def backward(self, d_output: Optional[float]=None) -> None:
         """
