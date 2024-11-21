@@ -32,6 +32,23 @@ class FastOps(TensorOps):
         return _map
 
     @staticmethod
+    def cmap(fn: Callable[[float], float]) -> MapProto:
+        """See `tensor_ops.py`"""
+        def _cmap(a: Tensor, out: Optional[Tensor] = None) -> Tensor:
+            if out is None:
+                out = a.zeros(a.shape)
+            tensor_map(fn)(
+                out._tensor._storage,
+                out._tensor._shape,
+                out._tensor._strides,
+                a._tensor._storage,
+                a._tensor._shape,
+                a._tensor._strides,
+            )
+            return out
+        return _cmap
+
+    @staticmethod
     def zip(fn: Callable[[float, float], float]) -> Callable[[Tensor, Tensor], Tensor]:
         """See `tensor_ops.py`"""
         def _zip(a: Tensor, b: Tensor) -> Tensor:
