@@ -84,7 +84,54 @@ class SimpleOps(TensorOps):
         Returns:
             new tensor data
         """
-        pass
+        def _map(a: Tensor, out: Optional[Tensor] = None) -> Tensor:
+            if out is None:
+                out = a.zeros(a.shape)
+            tensor_map(fn)(
+                a._tensor._storage,
+                a._tensor._shape,
+                a._tensor._strides,
+                out._tensor._storage,
+                out._tensor._shape,
+                out._tensor._strides,
+            )
+            return out
+        return _map
+
+    @staticmethod
+    def cmap(fn: Callable[[float], float]) -> MapProto:
+        """
+        Higher-order tensor map function that creates a new tensor ::
+
+          fn_map = map(fn)
+          out = fn_map(a)
+
+        Simple version::
+
+            for i:
+                for j:
+                    out[i, j] = fn(a[i, j])
+
+        Args:
+            fn: function from float-to-float to apply.
+            a (:class:`TensorData`): tensor to map over
+
+        Returns:
+            new tensor data
+        """
+        def _cmap(a: Tensor, out: Optional[Tensor] = None) -> Tensor:
+            if out is None:
+                out = a.zeros(a.shape)
+            tensor_map(fn)(
+                a._tensor._storage,
+                a._tensor._shape,
+                a._tensor._strides,
+                out._tensor._storage,
+                out._tensor._shape,
+                out._tensor._strides,
+            )
+            return out
+        return _cmap
 
     @staticmethod
     def zip(fn: Callable[[float, float], float]) -> Callable[['Tensor', 'Tensor'], 'Tensor']:
@@ -115,7 +162,22 @@ class SimpleOps(TensorOps):
         Returns:
             :class:`TensorData` : new tensor data
         """
-        pass
+        def _zip(a: Tensor, b: Tensor) -> Tensor:
+            c_shape = shape_broadcast(a.shape, b.shape)
+            out = a.zeros(c_shape)
+            tensor_zip(fn)(
+                a._tensor._storage,
+                a._tensor._shape,
+                a._tensor._strides,
+                b._tensor._storage,
+                b._tensor._shape,
+                b._tensor._strides,
+                out._tensor._storage,
+                out._tensor._shape,
+                out._tensor._strides,
+            )
+            return out
+        return _zip
 
     @staticmethod
     def reduce(fn: Callable[[float, float], float], start: float=0.0) -> Callable[['Tensor', int], 'Tensor']:
@@ -141,7 +203,21 @@ class SimpleOps(TensorOps):
         Returns:
             :class:`TensorData` : new tensor
         """
-        pass
+        def _reduce(a: Tensor, dim: int) -> Tensor:
+            out_shape = list(a.shape)
+            out_shape[dim] = 1
+            out = a.zeros(tuple(out_shape))
+            tensor_reduce(fn)(
+                a._tensor._storage,
+                a._tensor._shape,
+                a._tensor._strides,
+                out._tensor._storage,
+                out._tensor._shape,
+                out._tensor._strides,
+                dim,
+            )
+            return out
+        return _reduce
     is_cuda = False
 
 def tensor_map(fn: Callable[[float], float]) -> Callable[[Storage, Shape, Strides, Storage, Shape, Strides], None]:
@@ -167,7 +243,21 @@ def tensor_map(fn: Callable[[float], float]) -> Callable[[Storage, Shape, Stride
     Returns:
         Tensor map function.
     """
-    pass
+    def _map(in_storage: Storage,
+             in_shape: Shape,
+             in_strides: Strides,
+             out_storage: Storage,
+             out_shape: Shape,
+             out_strides: Strides) -> None:
+        out_index = np.zeros(len(out_shape), np.int32)
+        in_index = np.zeros(len(in_shape), np.int32)
+        for i in range(len(out_storage)):
+            to_index(i, out_shape, out_index)
+            broadcast_index(out_index, out_shape, in_shape, in_index)
+            in_position = index_to_position(in_index, in_strides)
+            out_position = index_to_position(out_index, out_strides)
+            out_storage[out_position] = fn(in_storage[in_position])
+    return _map
 
 def tensor_zip(fn: Callable[[float, float], float]) -> Callable[[Storage, Shape, Strides, Storage, Shape, Strides, Storage, Shape, Strides], None]:
     """
@@ -192,7 +282,27 @@ def tensor_zip(fn: Callable[[float, float], float]) -> Callable[[Storage, Shape,
     Returns:
         Tensor zip function.
     """
-    pass
+    def _zip(a_storage: Storage,
+             a_shape: Shape,
+             a_strides: Strides,
+             b_storage: Storage,
+             b_shape: Shape,
+             b_strides: Strides,
+             out_storage: Storage,
+             out_shape: Shape,
+             out_strides: Strides) -> None:
+        out_index = np.zeros(len(out_shape), np.int32)
+        a_index = np.zeros(len(a_shape), np.int32)
+        b_index = np.zeros(len(b_shape), np.int32)
+        for i in range(len(out_storage)):
+            to_index(i, out_shape, out_index)
+            broadcast_index(out_index, out_shape, a_shape, a_index)
+            broadcast_index(out_index, out_shape, b_shape, b_index)
+            a_position = index_to_position(a_index, a_strides)
+            b_position = index_to_position(b_index, b_strides)
+            out_position = index_to_position(out_index, out_strides)
+            out_storage[out_position] = fn(a_storage[a_position], b_storage[b_position])
+    return _zip
 
 def tensor_reduce(fn: Callable[[float, float], float]) -> Callable[[Storage, Shape, Strides, Storage, Shape, Strides, int], None]:
     """
@@ -207,5 +317,28 @@ def tensor_reduce(fn: Callable[[float, float], float]) -> Callable[[Storage, Sha
     Returns:
         Tensor reduce function.
     """
-    pass
+    def _reduce(a_storage: Storage,
+                a_shape: Shape,
+                a_strides: Strides,
+                out_storage: Storage,
+                out_shape: Shape,
+                out_strides: Strides,
+                reduce_dim: int) -> None:
+        out_index = np.zeros(len(out_shape), np.int32)
+        a_index = np.zeros(len(a_shape), np.int32)
+        for i in range(len(out_storage)):
+            to_index(i, out_shape, out_index)
+            out_position = index_to_position(out_index, out_strides)
+            # Setup initial
+            a_index[:] = out_index[:]
+            a_index[reduce_dim] = 0
+            a_position = index_to_position(a_index, a_strides)
+            reduced = a_storage[a_position]
+            # Reduce over dimension
+            for j in range(1, a_shape[reduce_dim]):
+                a_index[reduce_dim] = j
+                a_position = index_to_position(a_index, a_strides)
+                reduced = fn(reduced, a_storage[a_position])
+            out_storage[out_position] = reduced
+    return _reduce
 SimpleBackend = TensorBackend(SimpleOps)
